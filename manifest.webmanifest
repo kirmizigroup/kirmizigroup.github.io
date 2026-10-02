@@ -1,0 +1,31 @@
+{
+ "name": "KG Saha Formları",
+ "short_name": "KG Saha",
+ "id": "./",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "orientation": "portrait",
+ "background_color": "#F5F2F1",
+ "theme_color": "#D3241C",
+ "lang": "tr",
+ "description": "Kırmızı Group saha servis, bakım ve devreye alma formları",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-maskable-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}
