@@ -839,7 +839,7 @@ boot();
     const d=show(`<b>Uygulamayı telefona kur</b>Ana ekrana eklenir, tam ekran açılır.`);
     const b=document.createElement("button");b.textContent="Kur";d.insertBefore(b,d.querySelector(".x"));
     b.onclick=async()=>{if(!deferred)return;deferred.prompt();const r=await deferred.userChoice;deferred=null;if(r.outcome==="accepted")d.remove()}});
-  if(isIOS){show(`<b>Uygulamayı telefona kur</b>Safari'de alttaki <b>Paylaş</b> (kare-ok) simgesine, sonra <b>Ana Ekrana Ekle</b>'ye dokunun.`)}
+  if(isIOS){show(`<b>Uygulamayı telefona kur</b>Safari'de adres çubuğundaki <b>≡</b> (veya <b>Paylaş</b> kare-ok) simgesine, sonra <b>Ana Ekrana Ekle</b>'ye dokunun.`)}
   else if(isAndroid){setTimeout(()=>{if(!deferred&&!document.querySelector(".inst"))show(`<b>Uygulamayı telefona kur</b>Chrome menüsünden (⋮) <b>Ana ekrana ekle</b> / <b>Uygulamayı yükle</b>'ye dokunun.`)},3000)}
 })();
 </script>
