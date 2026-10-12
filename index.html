@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<meta name="kg-build" content="8a4e282e08">
+<meta name="kg-build" content="ad4d093fb5">
 <title>KG Saha Formları</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
@@ -148,7 +148,7 @@ fieldset.chips legend{font-size:13px;font-weight:600;color:var(--muted);margin-b
 .pv-in{width:794px;transform-origin:0 0;position:absolute;left:0;top:0}
 .zoom{position:fixed;inset:0;z-index:80;background:#3a3a3a;display:flex;flex-direction:column}
 .zoom-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top,0px));background:var(--fg);color:var(--bg);font-size:14px}
-.zoom-sc{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px;touch-action:pan-x pan-y}
+.zoom-sc{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px;touch-action:pan-x pan-y;overscroll-behavior:contain}
 .zoom-sz{position:relative}
 .zoom-in{width:794px;transform-origin:0 0;position:absolute;left:0;top:0}
 .zoom-in .pp{margin-bottom:16px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
@@ -448,10 +448,26 @@ function zoomV(){
   let pages=paperHTML(f,{n:n++,total});
   for(let i=0;i<fs.length;i+=4)pages+=photoHTML(f,fs.slice(i,i+4),i,{n:n++,total});
   if(hasTerms)pages+=termsHTML(f,{n:n++,total});
-  return`<div class="zoom" id="zoom"><div class="zoom-bar"><span>Form önizlemesi · ${total} sayfa</span><span class="row" style="gap:6px"><button class="btn sm" data-act="zoomOut" type="button" aria-label="Küçült">−</button><button class="btn sm" data-act="zoomIn" type="button" aria-label="Büyüt">+</button><button class="btn sm primary" data-act="zoomClose" type="button">Kapat</button></span></div>
+  return`<div class="zoom" id="zoom"><div class="zoom-bar"><span>Form önizlemesi · ${total} sayfa<br><small style="opacity:.75">İki parmakla büyütüp küçültebilirsiniz</small></span><span class="row" style="gap:6px"><button class="btn sm" data-act="zoomOut" type="button" aria-label="Küçült">−</button><button class="btn sm" data-act="zoomIn" type="button" aria-label="Büyüt">+</button><button class="btn sm primary" data-act="zoomClose" type="button">Kapat</button></span></div>
     <div class="zoom-sc" id="zoom-sc"><div class="zoom-sz" id="zoom-sz"><div class="zoom-in" id="zoom-in">${pages}</div></div></div></div>`;
 }
 function zoomApply(){const sz=$("#zoom-sz"),inn=$("#zoom-in");if(!sz||!inn)return;const s=S.zoom||1;inn.style.transform=`scale(${s})`;sz.style.width=(794*s)+"px";sz.style.height=(inn.offsetHeight*s)+"px"}
+const ZPAD=12;
+function zoomTo(ns,cx,cy){const sc=$("#zoom-sc");if(!sc)return;const os=S.zoom||1;ns=Math.max(.5,Math.min(3,ns));
+  if(cx===undefined){cx=sc.clientWidth/2;cy=sc.clientHeight/2}
+  const px=(sc.scrollLeft+cx-ZPAD)/os,py=(sc.scrollTop+cy-ZPAD)/os;S.zoom=ns;zoomApply();sc.scrollLeft=px*ns+ZPAD-cx;sc.scrollTop=py*ns+ZPAD-cy}
+function zoomGestures(){
+  const sc=$("#zoom-sc");if(!sc||sc._g)return;sc._g=1;
+  let d0=0,s0=1,cx=0,cy=0,lastTap=0,moved=false;
+  const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  const mid=t=>{const r=sc.getBoundingClientRect();return[(t[0].clientX+t[1].clientX)/2-r.left,(t[0].clientY+t[1].clientY)/2-r.top]};
+  sc.addEventListener("touchstart",e=>{moved=false;if(e.touches.length===2){d0=dist(e.touches);s0=S.zoom||1;[cx,cy]=mid(e.touches)}},{passive:true});
+  sc.addEventListener("touchmove",e=>{moved=true;if(e.touches.length!==2||!d0)return;e.preventDefault();[cx,cy]=mid(e.touches);zoomTo(s0*dist(e.touches)/d0,cx,cy)},{passive:false});
+  sc.addEventListener("touchend",e=>{if(e.touches.length<2)d0=0;
+    if(e.touches.length===0&&e.changedTouches.length===1&&!moved){const now=Date.now();
+      if(now-lastTap<320){const r=sc.getBoundingClientRect(),t=e.changedTouches[0];zoomTo((S.zoom||1)>1.3?1:2,t.clientX-r.left,t.clientY-r.top);lastTap=0}else lastTap=now}});
+  sc.addEventListener("wheel",e=>{if(!e.ctrlKey)return;e.preventDefault();const r=sc.getBoundingClientRect();zoomTo((S.zoom||1)*(e.deltaY<0?1.1:.9),e.clientX-r.left,e.clientY-r.top)},{passive:false});
+}
 function wizardV(){
   const steps=STEPS[F.type],id=steps[S.step];
   return`<div class="stack"><div class="wz-head">
@@ -836,10 +852,10 @@ document.addEventListener("click",async e=>{
   else if(a==="allOk"){KONTROL.forEach((_,i)=>{if(!F.kontrol[i])F.kontrol[i]="ok"});saveDraft();render()}
   else if(a==="quick"){const k=b.dataset.k,q=QUICK[k][+b.dataset.i];F[k]=(F[k]||"").trim()?(F[k].replace(/\s+$/,"")+(k==="yapilan"?"\n":" ")+q):q;saveDraftNow();const ta=$("#f-"+k);if(ta){ta.value=F[k];ta.focus()}}
   else if(a==="delFoto"){F.fotolar.splice(+b.dataset.i,1);saveDraftNow();render()}
-  else if(a==="zoom"){S.zoom=1;document.body.insertAdjacentHTML("beforeend",zoomV());zoomApply();document.body.style.overflow="hidden"}
+  else if(a==="zoom"){S.zoom=1;document.body.insertAdjacentHTML("beforeend",zoomV());zoomApply();zoomGestures();document.body.style.overflow="hidden"}
   else if(a==="zoomClose"){$("#zoom")?.remove();document.body.style.overflow=""}
-  else if(a==="zoomIn"){S.zoom=Math.min(2.5,(S.zoom||1)+.25);zoomApply()}
-  else if(a==="zoomOut"){S.zoom=Math.max(.6,(S.zoom||1)-.25);zoomApply()}
+  else if(a==="zoomIn")zoomTo((S.zoom||1)+.25);
+  else if(a==="zoomOut")zoomTo((S.zoom||1)-.25);
   else if(a==="clearSig"){F[b.dataset.k]="";F[b.dataset.k+"At"]="";saveDraft();render()}
   else if(a==="finish"){if(!validate())return render();saveDraftNow();finish()}
   else if(a==="retry"){if(!F)F=store.get("kg-draft");if(F)finish();else go("home")}
