@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<meta name="kg-build" content="ad4d093fb5">
+<meta name="kg-build" content="85cb745da2">
 <title>KG Saha Formları</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
@@ -405,7 +405,7 @@ function stepV(id){
     <div class="legal"><b>Tutanakta yer alacak sabit metin</b>${LEGAL.map(p=>`<p>${p}</p>`).join("")}</div>`;
   case"foto":{const fs=F.fotolar||[];return`<h2>Fotoğraflar</h2>
     <p class="muted" style="margin:0;font-size:14px">İsteğe bağlı. Arızalı cihazın, yapılan işin veya panonun fotoğraflarını ekleyin; PDF'in son sayfalarına eklenir.</p>
-    ${fs.length?`<div class="fotos">${fs.map((p,i)=>`<div class="foto"><img src="${p.data}" alt="Fotoğraf ${i+1}"><input data-fn="${i}" id="fn-${i}" value="${esc(p.not)}" placeholder="Açıklama (isteğe bağlı)" aria-label="Fotoğraf ${i+1} açıklaması"><button class="fx" data-act="delFoto" data-i="${i}" aria-label="Fotoğrafı sil">✕</button></div>`).join("")}</div>`:""}
+    ${fs.length?`<div class="fotos">${fs.map((p,i)=>`<div class="foto"><img src="${fd(p)}" alt="Fotoğraf ${i+1}"><input data-fn="${i}" id="fn-${i}" value="${esc(p.not)}" placeholder="Açıklama (isteğe bağlı)" aria-label="Fotoğraf ${i+1} açıklaması"><button class="fx" data-act="delFoto" data-i="${i}" aria-label="Fotoğrafı sil">✕</button></div>`).join("")}</div>`:""}
     ${fs.length<MAXFOTO?`<label class="btn" style="align-self:flex-start"><input type="file" id="fotoIn" accept="image/&#42;" multiple hidden>+ Fotoğraf çek / seç</label>`:""}
     <span class="muted" id="fotoMsg" style="font-size:13px">${fs.length} / ${MAXFOTO} fotoğraf</span>`}
   case"ziyaret":return`<h2>Ziyaret bilgileri</h2>
@@ -610,30 +610,39 @@ function addCanvas(pdf,canvas,first){
 }
 function photoHTML(f,list,off,pg){
   return`<div class="pp"><div class="pp-band"></div><div class="pp-body"><div class="pp-head"><img src="${LOGO}" alt=""><div class="pp-title">FOTOĞRAF EKİ<div class="pp-no" style="font-size:15px">${esc(TYPES[f.type].name.toLocaleUpperCase("tr"))} № ${f.no?pad(f.no):"——————"}</div></div><div class="pp-meta"><b>TARİH</b>${trDate(f.tarih)}<b style="margin-top:4px">FİRMA</b>${esc(f.firma)}</div></div>
-  <div class="pp-photos">${list.map((p,i)=>`<figure><div class="ph"><img src="${p.data}" alt=""></div><figcaption><b>${off+i+1}.</b> ${esc(p.not||"")}</figcaption></figure>`).join("")}</div><div class="pp-grow"></div></div>${pageFoot(f,pg)}</div>`;
+  <div class="pp-photos">${list.map((p,i)=>`<figure><div class="ph"><img src="${fd(p)}" alt=""></div><figcaption><b>${off+i+1}.</b> ${esc(p.not||"")}</figcaption></figure>`).join("")}</div><div class="pp-grow"></div></div>${pageFoot(f,pg)}</div>`;
 }
 async function makePdf(f){
   if(!window.html2canvas||!window.jspdf)throw new Error("PDF araçları yüklenemedi");
   const pdf=new window.jspdf.jsPDF({unit:"mm",format:"a4",compress:true});
   const fs=f.fotolar||[],hasTerms=!!(termsList(f.type).length||TX.kvkk||TX.eimza),total=1+Math.ceil(fs.length/4)+(hasTerms?1:0);let n=1;
   addCanvas(pdf,await snap(paperHTML(f,{n:n++,total})),true);
-  for(let i=0;i<fs.length;i+=4)addCanvas(pdf,await snap(photoHTML(f,fs.slice(i,i+4),i,{n:n++,total})),false);
+  for(let i=0;i<fs.length;i+=4){if(S.saving){S.phase=`PDF hazırlanıyor (sayfa ${n} / ${total})`;render();await sleep(0)}addCanvas(pdf,await snap(photoHTML(f,fs.slice(i,i+4),i,{n:n++,total})),false)}
   if(hasTerms)addCanvas(pdf,await snap(termsHTML(f,{n:n++,total})),false);
   pdf.setProperties({title:`${TYPES[f.type].name} ${pad(f.no||0)}`,author:"Kırmızı Group"});
   return pdf.output("blob");
 }
-const MAXFOTO=8;
+const MAXFOTO=50;
+/* Fotoğraflar localStorage'a sığmayacağı için (50 adet ≈ 8-10 MB) IndexedDB'de tutulur; taslakta sadece id + açıklama kalır. */
+const PH={};let _fdb=null;
+function fdb(){return _fdb||(_fdb=new Promise((res,rej)=>{try{const r=indexedDB.open("kg-fotos",1);r.onupgradeneeded=()=>r.result.createObjectStore("f");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}}))}
+async function fop(mode,fn){try{const db=await fdb();return await new Promise((res,rej)=>{const tx=db.transaction("f",mode),q=fn(tx.objectStore("f"));tx.oncomplete=()=>res(q&&q.result!==undefined?q.result:true);tx.onerror=()=>rej(tx.error)})}catch(e){return null}}
+const fotoPut=(id,d)=>fop("readwrite",s=>s.put(d,id)),fotoGet=id=>fop("readonly",s=>s.get(id)),fotoDel=id=>fop("readwrite",s=>s.delete(id)),fotoClear=()=>fop("readwrite",s=>s.clear());
+const fd=p=>p.data||PH[p.id]||"";
+async function fotoLoad(f){const arr=f.fotolar||[];for(const p of arr){if(!p.data&&p.id&&!PH[p.id]){const d=await fotoGet(p.id);if(d)PH[p.id]=d}}f.fotolar=arr.filter(p=>fd(p))}
 function shrink(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),img=new Image();
   img.onload=()=>{const s=Math.min(1,1280/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement("canvas");
     c.width=Math.round(img.naturalWidth*s);c.height=Math.round(img.naturalHeight*s);c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-    URL.revokeObjectURL(url);res(c.toDataURL("image/jpeg",.72))};
+    URL.revokeObjectURL(url);res(c.toDataURL("image/jpeg",.7))};
   img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("Fotoğraf okunamadı"))};img.src=url})}
 async function addFotos(files){
-  F.fotolar=F.fotolar||[];
-  for(const file of [...files]){
+  F.fotolar=F.fotolar||[];const list=[...files];let k=0;
+  for(const file of list){
     if(F.fotolar.length>=MAXFOTO){toast(`En fazla ${MAXFOTO} fotoğraf eklenebilir`);break}
-    const m=$("#fotoMsg");if(m)m.textContent="Fotoğraf işleniyor…";
-    try{F.fotolar.push({data:await shrink(file),not:""})}catch(e){toast(e.message)}
+    const m=$("#fotoMsg");if(m)m.textContent=`Fotoğraf işleniyor… ${++k} / ${list.length}`;
+    try{const d=await shrink(file),id=newCode()+"-"+Date.now().toString(36);
+      if(await fotoPut(id,d)===null)F.fotolar.push({data:d,not:""});else{PH[id]=d;F.fotolar.push({id,not:""})}
+    }catch(e){toast(e.message)}
   }
   saveDraftNow();render();
 }
@@ -646,7 +655,7 @@ const API_URL="https://script.google.com/macros/s/AKfycbxHZtB0I28_j8887ptD9NxSwP
 const api=(fn,...a)=>new Promise((res,rej)=>{
   if(window.google&&google.script&&google.script.run){google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](...a);return}
   // Telefon uygulaması: sunucuya doğrudan istek (text/plain → tarayıcı ön kontrol yapmaz)
-  const ctrl=new AbortController(),t=setTimeout(()=>ctrl.abort(),120000);
+  const ctrl=new AbortController(),t=setTimeout(()=>ctrl.abort(),300000);
   fetch(API_URL,{method:"POST",body:JSON.stringify({fn,args:a}),headers:{"Content-Type":"text/plain;charset=utf-8"},signal:ctrl.signal})
     .then(r=>{if(!r.ok)throw new Error("Sunucu yanıt vermedi ("+r.status+")");return r.json()})
     .then(j=>{if(j&&j.ok)res(j.result);else rej(new Error((j&&j.error)||"Sunucu hatası"))})
@@ -666,7 +675,7 @@ function newForm(type){
 let draftT;
 function saveDraft(){clearTimeout(draftT);draftT=setTimeout(saveDraftNow,300)}
 function saveDraftNow(){if(F){F.step=S.step;store.set("kg-draft",F)}}
-function clearDraft(){clearTimeout(draftT);store.del("kg-draft")}
+function clearDraft(){clearTimeout(draftT);store.del("kg-draft");for(const k in PH)delete PH[k];fotoClear()}
 
 function customers(){const m=new Map();for(const c of S.customers){const k=(c.firma||"").trim().toLocaleLowerCase("tr");if(k&&!m.has(k))m.set(k,c)}return m}
 function buildDatalist(){$("#dl-firma").innerHTML=[...customers().values()].map(c=>`<option value="${esc(c.firma)}">`).join("")}
@@ -840,7 +849,7 @@ document.addEventListener("click",async e=>{
   const n=e.target.closest("[data-nav]");if(n){if(S.view==="wizard")saveDraftNow();return go(n.dataset.nav)}
   const b=e.target.closest("[data-act]");if(!b)return;const a=b.dataset.act;
   if(a==="new")newForm(b.dataset.type);
-  else if(a==="resume"){F=store.get("kg-draft");if(!F)return;S.step=Math.min(F.step||0,STEPS[F.type].length-1);if(F.v!==3){S.step=Math.min(S.step,STEPS[F.type].indexOf("imzaP"));F.v=3}S.errs={};
+  else if(a==="resume"){F=store.get("kg-draft");if(!F)return;await fotoLoad(F);S.step=Math.min(F.step||0,STEPS[F.type].length-1);if(F.v!==3){S.step=Math.min(S.step,STEPS[F.type].indexOf("imzaP"));F.v=3}S.errs={};
     if(F.no&&F.sigP&&F.sigM){go("wizard");finish()}else go("wizard")}
   else if(a==="dropDraft"){clearDraft();render()}
   else if(a==="next"){if(!validate())return render();if(STEPS[F.type][S.step]==="ziyaret")store.set("kg-plaka",F.plaka);
@@ -851,14 +860,14 @@ document.addEventListener("click",async e=>{
   else if(a==="delMat"){F.malzeme.splice(+b.dataset.i,1);if(!F.malzeme.length)F.malzeme.push({ad:"",adet:""});saveDraft();render()}
   else if(a==="allOk"){KONTROL.forEach((_,i)=>{if(!F.kontrol[i])F.kontrol[i]="ok"});saveDraft();render()}
   else if(a==="quick"){const k=b.dataset.k,q=QUICK[k][+b.dataset.i];F[k]=(F[k]||"").trim()?(F[k].replace(/\s+$/,"")+(k==="yapilan"?"\n":" ")+q):q;saveDraftNow();const ta=$("#f-"+k);if(ta){ta.value=F[k];ta.focus()}}
-  else if(a==="delFoto"){F.fotolar.splice(+b.dataset.i,1);saveDraftNow();render()}
+  else if(a==="delFoto"){const [p]=F.fotolar.splice(+b.dataset.i,1);if(p&&p.id){delete PH[p.id];fotoDel(p.id)}saveDraftNow();render()}
   else if(a==="zoom"){S.zoom=1;document.body.insertAdjacentHTML("beforeend",zoomV());zoomApply();zoomGestures();document.body.style.overflow="hidden"}
   else if(a==="zoomClose"){$("#zoom")?.remove();document.body.style.overflow=""}
   else if(a==="zoomIn")zoomTo((S.zoom||1)+.25);
   else if(a==="zoomOut")zoomTo((S.zoom||1)-.25);
   else if(a==="clearSig"){F[b.dataset.k]="";F[b.dataset.k+"At"]="";saveDraft();render()}
   else if(a==="finish"){if(!validate())return render();saveDraftNow();finish()}
-  else if(a==="retry"){if(!F)F=store.get("kg-draft");if(F)finish();else go("home")}
+  else if(a==="retry"){if(!F){F=store.get("kg-draft");if(F)await fotoLoad(F)}if(F)finish();else go("home")}
   else if(a==="home"){if(S.saveErr&&F)saveDraftNow();S.saveErr="";F=null;go("home")}
   else if(a==="toggle"){S.open=S.open===b.dataset.id?null:b.dataset.id;const l=$("#listbox");if(l)l.innerHTML=listItems()}
   else if(a==="ftype"){S.filter.type=b.dataset.type;const l=$("#listbox");if(l)l.innerHTML=listItems()}
